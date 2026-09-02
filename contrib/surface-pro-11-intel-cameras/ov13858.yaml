@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: CC0-1.0
+#
+# libcamera simple-IPA tuning for the Omnivision OV13858 on the Microsoft
+# Surface Pro 11 for Business (Intel).
+#
+# blackLevel MEASURED: mean 64.21, median 64 across all four Bayer channels.
+#
+# Ccm: Intel's matrices for this module, corrected for libcamera's white balance
+# so that neutral surfaces measure neutral. See imx681.yaml for the
+# highlight-clipping limit that applies here too.
+%YAML 1.1
+---
+version: 1
+algorithms:
+  - BlackLevel:
+      blackLevel: 4096
+  - Awb:
+  - Ccm:
+      ccms:
+        - ct: 2860
+          ccm: [ 2.2940, -0.9795, -0.1269,
+                 -0.2492, 1.5273, -0.5229,
+                 -0.3841, -2.5263, 4.0588 ]
+        - ct: 5960
+          ccm: [ 1.7826, 0.2095, -0.8042,
+                 -0.4618, 1.3575, -0.1407,
+                 -0.5661, -2.2167, 3.9313 ]
+  - Adjust:
+  - Agc:
+...

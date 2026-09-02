@@ -1,0 +1,13 @@
+[Unit]
+Description=Recover the Bluetooth controller if it comes up dead
+After=bluetooth.service
+Wants=bluetooth.service
+
+[Service]
+# Type=simple, not oneshot: this gates nothing, and as a oneshot systemd made
+# multi-user.target wait for it, putting its whole check on the boot path.
+Type=simple
+ExecStart=/usr/local/sbin/sp11-bt-recover
+
+[Install]
+WantedBy=multi-user.target

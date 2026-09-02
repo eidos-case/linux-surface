@@ -1,0 +1,42 @@
+#!/bin/sh
+# btintel_pcie reliably fails to bring the controller up on a cold boot:
+#   Bluetooth: hciN: Unsupported cnvi 0x00000000
+#   Bluetooth: hciN: Controller in error state
+# leaving the adapter DOWN with BD address 00:00:00:00:00:00. Reloading the
+# module recovers it every time. First seen right after the November 2025
+# firmware bundle (which included an Intel ME update; CNVi is shared with Wi-Fi,
+# and Wi-Fi itself is unaffected).
+# Poll rather than sleeping a flat 20 s. The controller settles in a couple of
+# seconds when it is healthy, and this used to add the full 20 s to every boot.
+i=0
+while [ $i -lt 20 ]; do
+	out=$(hciconfig 2>/dev/null)
+	case "$out" in
+		"") ;;                                   # bluetooth not up yet, keep waiting
+		*00:00:00:00:00:00*) break ;;            # came up dead, recover below
+		*) exit 0 ;;                             # healthy, nothing to do
+	esac
+	sleep 1; i=$((i+1))
+done
+hciconfig 2>/dev/null | grep -q "00:00:00:00:00:00" || exit 0
+
+logger -t sp11-bt-recover "controller came up dead, reloading btintel_pcie"
+systemctl stop bluetooth
+modprobe -r btintel_pcie btintel 2>/dev/null
+sleep 2
+modprobe btintel_pcie
+systemctl start bluetooth
+
+# Firmware download takes a few seconds; wait for a real address before logging,
+# otherwise the log reports the pre-recovery state and looks like a failure.
+i=0
+while [ $i -lt 15 ]; do
+	addr=$(hciconfig 2>/dev/null | grep -m1 -oE "BD Address: [0-9A-F:]+" | cut -d' ' -f3)
+	case "$addr" in
+		""|00:00:00:00:00:00) ;;
+		*) logger -t sp11-bt-recover "recovered: $addr"; exit 0 ;;
+	esac
+	sleep 1; i=$((i+1))
+done
+logger -t sp11-bt-recover "reload did not recover the controller"
+exit 0
