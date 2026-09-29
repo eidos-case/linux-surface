@@ -1,42 +1,53 @@
-# Surface Pro 11 (Intel) — recovering Bluetooth after a failed suspend
+# Surface Pro 11 (Intel) — recovering Bluetooth that comes up dead at boot
 
-On this machine `btintel_pcie` sometimes misses the controller's alive interrupt
-when entering D3. The driver's fallback then consults a cache that only the
-interrupt handler updates, so the check always fails, all retries are exhausted,
-and `btintel_pcie_suspend()` returns `-EBUSY`. One device returning `-EBUSY`
-aborts the whole system suspend: the machine simply does not sleep.
+On this machine the Bluetooth controller (Intel BE201, `btintel_pcie`) sometimes
+comes up dead. A mailbox interrupt arrives during the firmware download before
+the driver is waiting for it, the driver's one retry fails the same way, and the
+adapter is left DOWN with the address 00:00:00:00:00:00:
 
-    Bluetooth: hci0: Timeout (200 ms) on alive interrupt for D2 entry, retry count 0
-    Bluetooth: hci0: Timeout (200 ms) on alive interrupt for D2 entry, retry count 1
-    Bluetooth: hci0: Timeout (200 ms) on alive interrupt for D2 entry, retry count 2
-    btintel_pcie 0000:00:14.7: PM: failed to suspend async: error -16
-    PM: Some devices failed to suspend, or early wake event detected
+    Bluetooth: hci0: Received hw exception interrupt
+    Bluetooth: hci0: Unsupported cnvi 0x00000000
+    Bluetooth: hci0: Controller in error state
 
-**This is a workaround, not a fix.** Two kernel patches addressing it are on
-linux-bluetooth as of 2026-09-03, fixing different halves of the same failure.
-Once either lands, delete this.
+On Ubuntu's 7.0.0-34 that was 9 boots in 28 here. Reloading the module brings
+the controller back. This service does that at boot, and only that: it has
+nothing to do with suspend.
 
-The failure is intermittent: measured here at roughly one suspend in six, and
-eight consecutive clean suspends prove nothing.
+**This is a workaround, not a fix, and you may not need it.** The race has not
+appeared on the 7.2 and 7.3 kernels built here, in 109 boots, though those
+builds also used a much smaller configuration than Ubuntu's. Look for
+"Controller in error state" in your own boot log before installing it.
 
 ## Where the files go
 
-    /usr/local/bin/sp11-bt-recover
+    /usr/local/sbin/sp11-bt-recover
     /etc/systemd/system/sp11-bt-recover.service
 
-    chmod +x /usr/local/bin/sp11-bt-recover
+    chmod +x /usr/local/sbin/sp11-bt-recover
     systemctl daemon-reload
     systemctl enable sp11-bt-recover.service
 
-## What it does, and two things worth knowing
+It uses `hciconfig`, which some distributions ship in a separate package of
+deprecated BlueZ tools. `DEV` at the top of the script is the controller's PCI
+address, `0000:00:14.7` here; `lspci -D | grep -i bluetooth` shows yours.
 
-It watches for the controller wedging and rebinds it, rather than unloading the
-module from a sleep hook, which is the usual advice and which loses the adapter
-for the rest of the session.
+## Why it waits
 
-- It polls rather than sleeping a fixed interval. An earlier version slept 20
-  seconds and was wrong on both sides: too long when the controller was ready
-  early, too short when it was not.
-- The unit is `Type=simple`, not `Type=oneshot`. As a oneshot it was considered
-  finished the moment it started, and systemd tore it down before it had done
-  anything.
+The probe returns at once and the firmware setup runs after it, with the address
+at zero throughout. A failing setup takes about 8 s to give up. Unloading the
+module in the middle of it frees the interrupts under it, and the next probe
+then fails with -62 and leaves no adapter at all. An earlier version of this
+script reloaded on the first zero address and did exactly that on every boot it
+fired.
+
+So it treats a zero address as dead only after 15 s, and reloads at once when no
+driver is bound. If the first reload gives no address it tries once more, and
+if neither worked it exits non-zero, so the unit shows in `systemctl --failed`.
+Keep the wait if you adapt it.
+
+## Provenance
+
+Surface Pro for Business 11th Edition with Intel, Core Ultra 7 268V, Ubuntu
+26.04, kernel 7.0.0-34. Ten warm reboots on 2026-09-29, with the wait then at
+10 s: seven healthy boots, where it did nothing, and three dead ones, all
+recovered, one of them on the second reload.
