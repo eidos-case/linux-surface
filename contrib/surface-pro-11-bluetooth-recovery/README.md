@@ -13,10 +13,11 @@ On Ubuntu's 7.0.0-34 that was 9 boots in 28 here. Reloading the module brings
 the controller back. This service does that at boot, and only that: it has
 nothing to do with suspend.
 
-**This is a workaround, not a fix, and you may not need it.** The race has not
-appeared on the 7.2 and 7.3 kernels built here, in 109 boots, though those
-builds also used a much smaller configuration than Ubuntu's. Look for
-"Controller in error state" in your own boot log before installing it.
+**This is a workaround, not a fix, and you may not need it.** The race is in
+Ubuntu's kernel, not mainline: v7.0 built with Ubuntu's own configuration came
+up clean on 41 boots of 41, as did the 7.2 and 7.3 kernels built here. It is
+reported as [Launchpad bug 2161900](https://bugs.launchpad.net/ubuntu/+source/linux/+bug/2161900).
+Look for "Controller in error state" in your own boot log before installing it.
 
 ## Where the files go
 
