@@ -18,8 +18,8 @@
 # flat colour. This sensor also loses least by going without: its uncorrected
 # colourfulness is 18.1 against the rear sensor's 10.8.
 #
-# The matrices are kept in the repository. Turn them back on once the software
-# ISP desaturates highlights - see finding 45.
+# The matrices are also Intel's data, and these files carry only what was
+# measured here.
 %YAML 1.1
 ---
 version: 1

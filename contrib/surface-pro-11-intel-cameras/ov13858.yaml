@@ -5,9 +5,9 @@
 #
 # blackLevel MEASURED: mean 64.21, median 64 across all four Bayer channels.
 #
-# Ccm: Intel's matrices for this module, corrected for libcamera's white balance
-# so that neutral surfaces measure neutral. See imx681.yaml for the
-# highlight-clipping limit that applies here too.
+# No Ccm. The matrices that worked here are Intel's, read out of the Windows
+# driver's tuning data, and these files carry only what was measured on this
+# machine. Without one the colour is flatter than it could be.
 %YAML 1.1
 ---
 version: 1
@@ -15,16 +15,6 @@ algorithms:
   - BlackLevel:
       blackLevel: 4096
   - Awb:
-  - Ccm:
-      ccms:
-        - ct: 2860
-          ccm: [ 2.2940, -0.9795, -0.1269,
-                 -0.2492, 1.5273, -0.5229,
-                 -0.3841, -2.5263, 4.0588 ]
-        - ct: 5960
-          ccm: [ 1.7826, 0.2095, -0.8042,
-                 -0.4618, 1.3575, -0.1407,
-                 -0.5661, -2.2167, 3.9313 ]
   - Adjust:
   - Agc:
 ...
