@@ -23,7 +23,7 @@ so no configuration is needed beyond putting them there.
 
 ## What you also need, and do not have yet
 
-These files alone are not enough. As of 2026-10-03:
+These files alone are not enough. As of 2026-10-08:
 
 - **No released kernel has the camera side yet.** The front and infrared
   sensors have no driver in any release: the front one is on linux-media, the
@@ -41,6 +41,12 @@ These files alone are not enough. As of 2026-10-03:
   2026-08-31 and held until the kernel driver lands, since a helper should not
   come ahead of its driver. Until then, `imx681.yaml` will not help on its own.
 
+- **The infrared picture needs an IPU7 fix.** The staging IPU7 driver writes
+  capture buffers without snooping the CPU's caches, so a program that reads a
+  frame can get rows of an older one, visible wherever the scene moves. The
+  one-line fix is on linux-media, not merged:
+  https://lore.kernel.org/linux-media/20261007183311.24637-1-lsa.uz@pm.me/
+
 Check whether these have landed before assuming the files are at fault.
 
 ## Things that will look like bugs and are not
@@ -55,7 +61,9 @@ improved anything.
 
 **`vd55g0.yaml` has no `Agc` block.** Also deliberate: the infrared camera is
 paired with an illuminator, and letting the AGC hunt makes face recognition less
-reliable, not more.
+reliable, not more. With a driver that reports the sensor as monochrome, as the
+one going upstream does, libcamera 0.7 passes its frames through without
+processing them, and nothing in this file applies.
 
 **These files are written for libcamera 0.7.0.** The soft ISP changes
 underneath: a colour matrix that gave a neutral-grey channel spread of 1.06 on
@@ -69,8 +77,14 @@ camera through libcamera's Python bindings, since Howdy expects a V4L2 device
 and the IR camera is only usable through libcamera here. Point Howdy's
 `device_path` at it per its own documentation.
 
-Two things in it are load-bearing and easy to lose when adapting it:
+Three things in it are load-bearing and easy to lose when adapting it:
 
+- It must check the format libcamera kept. `validate()` silently swaps a format
+  the camera does not offer, and libcamera 0.7 offers a monochrome sensor only
+  its raw R8, R10 and R10_CSI2P: no software ISP handles mono. Read as
+  XRGB8888, those gave Howdy a frame a quarter of the true width, in which it
+  found no face. With the driver going upstream, run on a 7.3-rc1 kernel, the
+  reader as it is now found a face in every frame at 644x604.
 - `get()` must return the real frame dimensions. Returning zeros makes Howdy's
   comparison step request an enormous resize — it asked for 118 GB here before
   it was fixed.

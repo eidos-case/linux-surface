@@ -22,6 +22,13 @@ import libcamera as lc
 
 V4L2_CTL = "/usr/bin/v4l2-ctl"
 
+# Formats this reader can turn into a frame, in order of preference.
+# XRGB8888 is what libcamera's software ISP makes from a Bayer sensor. A
+# driver that reports the infrared sensor as what it is, Y8 or Y10, gets no
+# ISP in libcamera 0.7, which debayers Bayer input only: the camera then
+# offers just its raw R8, R10 and R10_CSI2P. R8 is all Howdy needs.
+READABLE = ("XRGB8888", "R8", "R10")
+
 
 class libcamera_reader:
 	"""Looks like the parts of cv2.VideoCapture that Howdy uses."""
@@ -61,9 +68,26 @@ class libcamera_reader:
 		self.camera = match[0]
 		self.camera.acquire()
 
+		# Ask for a format this reader can read, and check that it was kept:
+		# validate() swaps a format the camera does not offer for one it
+		# does, without a word, and reading that as XRGB8888 gives Howdy a
+		# frame a quarter of the true width.
 		cfg = self.camera.generate_configuration([lc.StreamRole.Viewfinder])
-		cfg.at(0).pixel_format = lc.formats.XRGB8888
-		cfg.validate()
+		offered = [str(f) for f in cfg.at(0).formats.pixel_formats]
+		self.format = next((f for f in READABLE if f in offered), None)
+		if self.format is None:
+			raise RuntimeError("no format this reader can read; the camera offers %s"
+					   % offered)
+		cfg.at(0).pixel_format = lc.PixelFormat(self.format)
+		if self.format != "XRGB8888":
+			# A raw format comes in the sensor's own sizes, and the default
+			# is the smallest, a binned 320x240. Take the native frame:
+			# Howdy scales to its max_height itself.
+			cfg.at(0).size = cfg.at(0).formats.range(lc.PixelFormat(self.format)).max
+		if (cfg.validate() == lc.CameraConfiguration.Status.Invalid
+				or str(cfg.at(0).pixel_format) != self.format):
+			raise RuntimeError("libcamera did not keep %s, it gave %s"
+					   % (self.format, cfg.at(0).pixel_format))
 		self.scfg = cfg.at(0)
 		self.camera.configure(cfg)
 		self.stream = self.scfg.stream
@@ -169,9 +193,16 @@ class libcamera_reader:
 					self.maps[i], dtype=np.uint8,
 					count=self.stride * self.height
 				)
-				# XRGB8888: the sensor is monochrome, so any one of the
-				# colour bytes carries the image.
-				mono = raw.reshape(self.height, self.stride // 4, 4)[:, :self.width, 0]
+				if self.format == "XRGB8888":
+					# the sensor is monochrome, so any one of the
+					# colour bytes carries the image
+					mono = raw.reshape(self.height, self.stride // 4, 4)[:, :self.width, 0]
+				elif self.format == "R8":
+					mono = raw.reshape(self.height, self.stride)[:, :self.width]
+				else:
+					# R10: ten bits in sixteen, little-endian; the top eight
+					mono = (raw.view("<u2").reshape(self.height, self.stride // 2)
+						[:, :self.width] >> 2).astype(np.uint8)
 				frame = np.dstack([mono, mono, mono])
 				req.reuse()
 				self.camera.queue_request(req)
